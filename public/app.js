@@ -113,7 +113,30 @@ function showTyping(){
   messages.scrollTop = messages.scrollHeight;
 }
 function hideTyping(){ if(typingEl){ typingEl.remove(); typingEl = null; } }
+function appendReplyButtons(text, options) {
+  const n = tplBot.content.cloneNode(true);
+  n.querySelector('.txt').innerHTML = text.replace(/\n/g, "<br/>");
 
+  const wrapper = document.createElement('div');
+  wrapper.className = 'reply-buttons';
+
+  options.forEach(opt => {
+    const btn = document.createElement('button');
+    btn.className = 'reply-btn';
+    btn.textContent = opt.title;
+    btn.onclick = () => {
+      input.value = opt.payload; 
+      form.dispatchEvent(new Event("submit")); 
+    };
+    wrapper.appendChild(btn);
+  });
+
+  n.querySelector('.time').textContent = timeNow();
+  n.querySelector('.msg').appendChild(wrapper);
+
+  messages.appendChild(n);
+  messages.scrollTop = messages.scrollHeight;
+}
 function escapeHtml(unsafe){ return unsafe ? unsafe.replace(/[&<"']/g, function(m){ return ({'&':'&amp;','<':'&lt;','"':'&quot;',"'":'&#039;'})[m]; }) : ''; }
 
 async function sendCommand(text){
