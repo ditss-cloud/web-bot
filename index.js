@@ -5,122 +5,117 @@ import morgan from 'morgan';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import bodyParser from 'body-parser';
+import fetch from 'node-fetch';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
 app.use(cors());
-app.use(morgan('dev'));
+app.use(morgan('tiny'));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
-// Serve static frontend
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Simple in-memory "db" (demo). Replace with MongoDB in production.
-const DB = {
-  users: [],
-  chats: []
-};
+// typing delay helper
+const wait = ms => new Promise(r => setTimeout(r, ms));
 
-function genOtp() {
-  return String(Math.floor(100000 + Math.random() * 900000));
-}
-
-// Helper to simulate delay (ms)
-const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
-// POST /api/command  -- central command handler
+// central command handler
 app.post('/api/command', async (req, res) => {
   const { text } = req.body;
   const t = (text || '').trim();
+  await wait(400); // server thinking base
 
-  // small server-side processing delay to simulate bot thinking
-  await wait(700);
-
-  // basic command switch
   const cmd = t.split(' ')[0].toLowerCase();
 
-  switch(cmd) {
-    case '.menu':
-      return res.json({
-        type: 'menu',
-        delay: 900, // frontend will show typing for this ms
-        title: 'Menu Utama',
-        items: [
-          { id: '1', label: 'Games', payload: '.games' },
-          { id: '2', label: 'AI Tools', payload: '.ai' },
-          { id: '3', label: 'Get TikTok Video', payload: '.tt <url>' }
-        ]
-      });
-    case '.halo':
-    case '.hi':
-      return res.json({ type: 'text', delay: 500, text: '👋 Halo! Ada yang bisa aku bantu?' });
-    case '.time':
-      return res.json({ type: 'text', delay: 400, text: `🕒 Server time: ${new Date().toLocaleString()}` });
-    case '.clear':
-      DB.chats = [];
-      return res.json({ type: 'text', delay: 300, text: '🧹 Chat cleared.' });
-    case '.tt':
-      // format: .tt https://www.tiktok.com/...
-      const url = t.split(' ')[1] || '';
-      if (!url) return res.json({ type: 'text', delay: 300, text: '❗ Kirim .tt <url_tiktok>' });
-      // in real app call your web API to fetch video; here we mock
-      await wait(600);
-      return res.json({
-        type: 'video',
-        delay: 900,
-        data: {
-          title: 'Sample TikTok Video (mock)',
-          videoUrl: 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
-          thumb: 'https://picsum.photos/seed/tiktokthumb/480/270'
+  try {
+    switch(cmd) {
+      case '.menu':
+        return res.json({
+          type: 'buttons',
+          delay: 700,
+          text: '📋 Pilih salah satu menu di bawah:',
+          buttons: [
+            { id: '.tt', title: 'Download TikTok' },
+            { id: '.brat', title: 'Buat Brat Sticker' },
+            { id: '.about', title: 'Tentang Asuma' }
+          ]
+        });
+      case '.about':
+        return res.json({ type: 'text', delay: 400, text: 'Asuma Web Bot — versi advanced. Ketik .menu untuk lihat menu.' });
+      case '.brat': {
+        const textArg = t.split(' ').slice(1).join(' ') || 'hello';
+        const apiUrl = `https://www.ditss.biz.id/api/maker/brat?text=${encodeURIComponent(textArg)}`;
+        // try fetch JSON response; some endpoints may return image directly
+        try {
+          const r = await fetch(apiUrl);
+          const ct = r.headers.get('content-type') || '';
+          if (ct.includes('application/json')) {
+            const j = await r.json();
+            if (j && j.url) {
+              return res.json({ type: 'image', delay: 700, data: { url: j.url, caption: `Brat: ${textArg}` } });
+            }
+          }
+        } catch(e){
+          console.error('brat fetch error', e);
         }
-      });
-    case '.brat':
-      // send sticker/image
-      await wait(400);
-      return res.json({
-        type: 'image',
-        delay: 600,
-        data: {
-          url: 'https://picsum.photos/seed/sticker/400/400',
-          alt: 'Sticker mock'
+        // fallback: use direct api url as image src
+        return res.json({ type: 'image', delay: 700, data: { url: apiUrl, caption: `Brat: ${textArg}` } });
+      }
+      case '.tt': {
+        const urlArg = t.split(' ')[1];
+        if (!urlArg) return res.json({ type: 'text', delay: 300, text: '❗ Kirim .tt <url_tiktok>' });
+        const api = `https://www.ditss.biz.id/api/download/tiktok-v2?url=${encodeURIComponent(urlArg)}`;
+        const r = await fetch(api);
+        const j = await r.json();
+        if (!j || !j.status || !j.result || !j.result.data) {
+          return res.json({ type: 'text', delay: 400, text: '❌ Gagal mengambil data dari API TikTok.' });
         }
-      });
-    default:
-      return res.json({ type: 'text', delay: 400, text: '❌ Command tidak dikenal. Ketik .menu untuk daftar perintah.' });
+        const d = j.result.data;
+        const videoUrl = d.hdplay || d.play || d.wmplay || null;
+        const cover = d.cover || d.origin_cover || d.ai_dynamic_cover || '';
+        return res.json({
+          type: 'video',
+          delay: 900,
+          data: {
+            title: d.title || 'TikTok Video',
+            cover,
+            videoUrl,
+            downloadUrl: videoUrl,
+            duration: d.duration || 0,
+            author: d.author || {}
+          },
+          buttons: [
+            { id: 'download', title: '⬇️ Download', url: videoUrl },
+            { id: 'share', title: '📤 Share ke WhatsApp', url: `https://wa.me/?text=${encodeURIComponent(d.title + ' ' + (videoUrl||''))}` }
+          ]
+        });
+      }
+      default:
+        return res.json({ type: 'text', delay: 300, text: '❌ Command tidak dikenal. Ketik .menu' });
+    }
+  } catch (err) {
+    console.error('Command error', err);
+    return res.json({ type: 'text', delay: 300, text: '❌ Terjadi error di server.' });
   }
 });
 
-// Mock endpoints for API integration examples (for frontend buttons to call)
-// /api/fetch-tt  - simulate fetching metadata / download links for a TikTok url
 app.post('/api/fetch-tt', async (req, res) => {
   const { url } = req.body;
   if (!url) return res.status(400).json({ error: 'url required' });
-  // simulate external API processing
-  await wait(800);
-  res.json({
-    ok: true,
-    title: 'Mock TikTok Video',
-    videoUrl: 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
-    downloadUrl: 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
-    thumb: 'https://picsum.photos/seed/tt/640/360'
-  });
+  try {
+    const r = await fetch(`https://www.ditss.biz.id/api/download/tiktok-v2?url=${encodeURIComponent(url)}`);
+    const j = await r.json();
+    return res.json(j);
+  } catch(e) {
+    return res.status(500).json({ error: 'fetch failed' });
+  }
 });
 
-// /api/send-whatsapp (demo) - returns wa.me link for sharing
-app.post('/api/send-whatsapp', (req, res) => {
-  const { phone, text } = req.body;
-  if (!phone || !text) return res.status(400).json({ error: 'phone & text required' });
-  const wa = `https://wa.me/${encodeURIComponent(phone)}?text=${encodeURIComponent(text)}`;
-  return res.json({ ok: true, wa });
-});
-
-// Fallback: serve index.html
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+app.get('*', (req,res)=>{
+  res.sendFile(path.join(__dirname,'public','index.html'));
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
+app.listen(PORT, ()=> console.log(`Server running on http://localhost:${PORT}`));
