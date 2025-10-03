@@ -1,24 +1,29 @@
 
 <!doctype html>
-<html lang="en">
+<html lang="id">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Asuma Web Bot — AI-style UI</title>
+<title>Asuma — Web Bot</title>
 <link href="style.css" rel="stylesheet">
 </head>
 <body>
   <div class="app">
     <aside class="sidebar">
       <div class="brand">
-        <div class="logo">WA+</div>
-        <div class="title">Asuma Web Bot</div>
+        <!-- svg logo -->
+        <div class="logo-svg">
+          <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect width="48" height="48" rx="10" fill="#25D366"/>
+            <text x="50%" y="55%" text-anchor="middle" font-size="26" font-family="Arial" fill="#fff" font-weight="700">A</text>
+          </svg>
+        </div>
+        <div class="title">Asuma Bot</div>
       </div>
       <div class="menu">
         <button class="menu-btn" data-cmd=".menu">Menu</button>
-        <button class="menu-btn" data-cmd=".halo">Halo</button>
-        <button class="menu-btn" data-cmd=".time">Time</button>
-        <button class="menu-btn" data-cmd=".brat">Send Sticker</button>
+        <button class="menu-btn" data-cmd=".tt">Download TikTok</button>
+        <button class="menu-btn" data-cmd=".brat hello">Brat Sticker</button>
         <hr>
         <label class="music-label">Music Player</label>
         <div class="music-player">
@@ -35,13 +40,13 @@
     <main class="chat-area">
       <header class="chat-header">
         <div class="chat-title">General</div>
-        <div class="chat-sub">Asuma Bot — Web Edition</div>
+        <div class="chat-sub">Asuma Web Bot — WhatsApp-like UI</div>
       </header>
 
       <section id="messages" class="messages"></section>
 
       <form id="composer" class="composer">
-        <input id="input" placeholder="Type command like .menu or .tt <tiktok_url>" autocomplete="off" />
+        <input id="input" placeholder="Ketik command misal .menu atau .tt <url>" autocomplete="off" />
         <button type="submit" id="send">Send</button>
       </form>
     </main>
@@ -67,6 +72,16 @@
     </div>
   </template>
 
+  <template id="tpl-buttons">
+    <div class="msg bot">
+      <div class="bubble">
+        <div class="txt"></div>
+        <div class="button-list"></div>
+        <div class="meta"><span class="time"></span></div>
+      </div>
+    </div>
+  </template>
+
   <template id="tpl-image">
     <div class="msg bot">
       <div class="bubble media">
@@ -80,7 +95,7 @@
   <template id="tpl-video">
     <div class="msg bot">
       <div class="bubble media">
-        <video class="media-video" controls playsinline></video>
+        <img class="media-thumb" />
         <div class="caption"></div>
         <div class="controls"></div>
       </div>
