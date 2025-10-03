@@ -4,19 +4,19 @@ const form = document.getElementById('composer');
 const messages = document.getElementById('messages');
 const tplText = document.getElementById('tpl-text');
 const tplUser = document.getElementById('tpl-user');
+const tplButtons = document.getElementById('tpl-buttons');
 const tplImage = document.getElementById('tpl-image');
 const tplVideo = document.getElementById('tpl-video');
 
-// music
+// music controls
 const music = document.getElementById('music');
 const playBtn = document.getElementById('playBtn');
 const nowPlaying = document.getElementById('nowPlaying');
 playBtn && playBtn.addEventListener('click', ()=>{
-  if(music.paused){ music.play(); playBtn.textContent='Pause'; nowPlaying.textContent='T-Rex roar'; }
+  if(music.paused){ music.play(); playBtn.textContent='Pause'; nowPlaying.textContent='Now Playing'; }
   else { music.pause(); playBtn.textContent='Play'; nowPlaying.textContent='Paused'; }
 });
 
-// helper render
 function timeNow(){ return new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
 
 function appendUser(text){
@@ -35,6 +35,37 @@ function appendTextBot(text){
   messages.scrollTop = messages.scrollHeight;
 }
 
+function appendButtons(text, buttons){
+  const n = tplButtons.content.cloneNode(true);
+  n.querySelector('.txt').innerHTML = text.replace(/\n/g, '<br/>');
+  const list = n.querySelector('.button-list');
+  buttons.forEach(b => {
+    const btn = document.createElement('div');
+    btn.className = 'btn-wa';
+    btn.innerHTML = `<span>${escapeHtml(b.title)}</span><span class="copy">Copy</span>`;
+    btn.addEventListener('click', ()=>{
+      // simulate single-select: fill input with payload (id) or open url if present
+      if(b.url){
+        window.open(b.url, '_blank');
+      } else {
+        input.value = b.id;
+        input.focus();
+      }
+    });
+    btn.querySelector('.copy').addEventListener('click', (e)=>{
+      e.stopPropagation();
+      navigator.clipboard.writeText(b.id).then(()=>{
+        btn.querySelector('.copy').textContent = 'Copied';
+        setTimeout(()=>btn.querySelector('.copy').textContent = 'Copy',1200);
+      });
+    });
+    list.appendChild(btn);
+  });
+  n.querySelector('.time').textContent = timeNow();
+  messages.appendChild(n);
+  messages.scrollTop = messages.scrollHeight;
+}
+
 function appendImage(url, caption){
   const n = tplImage.content.cloneNode(true);
   n.querySelector('.media-img').src = url;
@@ -48,21 +79,24 @@ function appendImage(url, caption){
   messages.scrollTop = messages.scrollHeight;
 }
 
-function appendVideo(obj){
+function appendVideo(data){
   const n = tplVideo.content.cloneNode(true);
-  const vid = n.querySelector('.media-video');
-  vid.src = obj.videoUrl;
-  n.querySelector('.caption').textContent = obj.title || '';
+  n.querySelector('.media-thumb').src = data.cover || '';
+  n.querySelector('.caption').textContent = data.title || '';
   const controls = n.querySelector('.controls');
+  const btnPlay = document.createElement('button');
+  btnPlay.textContent = 'Play in new tab';
+  btnPlay.onclick = ()=>{ window.open(data.videoUrl, '_blank'); };
   const btnDownload = document.createElement('button');
   btnDownload.textContent = 'Download';
-  btnDownload.onclick = ()=>{ window.open(obj.downloadUrl || obj.videoUrl, '_blank'); };
+  btnDownload.onclick = ()=>{ window.open(data.downloadUrl || data.videoUrl, '_blank'); };
   const btnShare = document.createElement('button');
   btnShare.textContent = 'Share via WhatsApp';
   btnShare.onclick = ()=>{
-    const wa = `https://wa.me/?text=${encodeURIComponent(obj.title + ' ' + (obj.videoUrl || ''))}`;
+    const wa = `https://wa.me/?text=${encodeURIComponent((data.title||'')+' '+(data.videoUrl||''))}`;
     window.open(wa,'_blank');
   };
+  controls.appendChild(btnPlay);
   controls.appendChild(btnDownload);
   controls.appendChild(btnShare);
   messages.appendChild(n);
@@ -80,12 +114,8 @@ function showTyping(){
 }
 function hideTyping(){ if(typingEl){ typingEl.remove(); typingEl = null; } }
 
-// escape html
-function escapeHtml(unsafe) {
-    return unsafe ? unsafe.replace(/[&<"']/g, function(m){ return ({'&':'&amp;','<':'&lt;','"':'&quot;',"'":'&#039;'})[m]; }) : '';
-}
+function escapeHtml(unsafe){ return unsafe ? unsafe.replace(/[&<"']/g, function(m){ return ({'&':'&amp;','<':'&lt;','"':'&quot;',"'":'&#039;'})[m]; }) : ''; }
 
-// send command to backend
 async function sendCommand(text){
   appendUser(text);
   showTyping();
@@ -95,39 +125,20 @@ async function sendCommand(text){
       body: JSON.stringify({ text })
     });
     const data = await res.json();
-    // wait additional server-intended delay for better UX
     if(data.delay) await new Promise(r=>setTimeout(r, data.delay));
     hideTyping();
-    handleResponse(data);
-  }catch(err){
+    if(data.type === 'text') appendTextBot(data.text);
+    else if(data.type === 'buttons') appendButtons(data.text, data.buttons || []);
+    else if(data.type === 'image') appendImage(data.data.url, data.data.caption);
+    else if(data.type === 'video') appendVideo(data.data);
+    else appendTextBot('Response not understood');
+  }catch(e){
     hideTyping();
-    appendTextBot('❌ Server error: ' + err.message);
+    appendTextBot('❌ Server error');
+    console.error(e);
   }
 }
 
-function handleResponse(data){
-  if(!data) return;
-  switch(data.type){
-    case 'text':
-      appendTextBot(data.text);
-      break;
-    case 'menu':
-      appendTextBot(data.title + '\n' + data.items.map(it=>`• ${it.label} -> ${it.payload}`).join('\n'));
-      break;
-    case 'image':
-      appendImage(data.data.url, data.data.alt);
-      break;
-    case 'video':
-      appendVideo({ videoUrl: data.data.videoUrl, downloadUrl: data.data.videoUrl, title: data.data.title });
-      break;
-    default:
-      appendTextBot('Response not understood');
-  }
-}
-
-// initial welcome
-appendTextBot('Welcome to Asuma Web Bot — try .menu, .tt <url>, .brat (sticker)');
-// send form
 form.addEventListener('submit', (e)=>{
   e.preventDefault();
   const v = input.value.trim();
@@ -136,11 +147,11 @@ form.addEventListener('submit', (e)=>{
   input.value = '';
 });
 
-// menu buttons
 document.querySelectorAll('.menu-btn').forEach(b=>{
   b.addEventListener('click', ()=>{
-    const cmd = b.getAttribute('data-cmd');
-    sendCommand(cmd);
+    sendCommand(b.getAttribute('data-cmd'));
   });
 });
 
+appendTextBot('Selamat datang di Asuma Bot — ketik .menu untuk memulai.');
+      
